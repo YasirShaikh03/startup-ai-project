@@ -1,3 +1,8 @@
+## Author
+
+**Yasir Shaikh **  
+GitHub: https://github.com/YasirShaikh03/startup-ai-project/edit/main/README.md
+
 # Startup Intelligence Platform — Pro Edition
 
 A fully client-side business analysis tool for Indian startups and street food businesses. Fill in your details, get an ML-scored report with AI-powered insights — no backend, no server, no sign-up needed.
@@ -178,3 +183,7 @@ MIT — do whatever you want with it.
 ---
 
 *Built for Indian founders and street entrepreneurs. If this helped you, star the repo.*
+## Author
+
+**Yasir Shaikh **  
+GitHub: https://github.com/YasirShaikh03/startup-ai-project/edit/main/README.md
