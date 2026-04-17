@@ -1,6 +1,6 @@
 ## Author
 
-**Yasir Shaikh **  
+Yasir Shaikh
 GitHub: https://github.com/YasirShaikh03
 
 # Startup Intelligence Platform — Pro Edition
@@ -183,7 +183,8 @@ MIT — do whatever you want with it.
 ---
 
 *Built for Indian founders and street entrepreneurs. If this helped you, star the repo.*
+
 ## Author
 
-**Yasir Shaikh **  
+Yasir Shaikh
 GitHub: https://github.com/YasirShaikh03
