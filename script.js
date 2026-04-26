@@ -1,11 +1,506 @@
+/* @author Yasir Shaikh | https://github.com/YasirShaikh03 */
 'use strict';
 
 let bizType = '', streetMode = false, history = [], charts = {};
 let currentAnalysisData = null, currentAnalysisScores = null, currentAnalysisIsStreet = false;
 let chatMessages = [], chatBusy = false;
+let ideaMode = 'have'; // 'have' | 'generate'
 try { const s = localStorage.getItem('sip_history'); if (s) history = JSON.parse(s); updateHC(); } catch(e) { history = []; }
 
-// benchmark percentiles by business type
+/* ══════════════════════════════════════════════════════
+   IDEA MODE TOGGLE
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
+function setIdeaMode(mode) {
+  ideaMode = mode;
+  const tabHave = g('tab-have-idea'), tabGen = g('tab-gen-idea');
+  const genPanel = g('gen-idea-panel'), fv = g('fv');
+  if (mode === 'generate') {
+    tabHave.classList.remove('active'); tabGen.classList.add('active');
+    genPanel.classList.remove('hidden'); fv.classList.add('hidden');
+  } else {
+    tabHave.classList.add('active'); tabGen.classList.remove('active');
+    genPanel.classList.add('hidden'); fv.classList.remove('hidden');
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   IDEA GENERATION ENGINE
+══════════════════════════════════════════════════════ */
+const IDEA_TEMPLATES = {
+  'AI / Technology': [
+    { name:'NeuroBiz AI', model:'AI-powered business automation SaaS', audience:'SMEs & solo founders', revenue:'₹999–₹4999/month subscription', cost:'₹3L–₹10L', market:'National', risk:'Medium', bizType:'SaaS', industry:'AI / ML', famt:'₹2L – ₹10L', msize:'National (India)', rev:'First customers / Beta', pstage:'Building / In development', comp:'Few niche competitors', trend:'Viral / Explosive growth' },
+    { name:'TalentScan AI', model:'AI resume screening & hiring tool for Indian SMBs', audience:'HR managers & startups', revenue:'Per-hire fee + monthly SaaS', cost:'₹5L–₹20L', market:'National', risk:'Low', bizType:'SaaS', industry:'AI / ML', famt:'₹10L – ₹50L', msize:'National (India)', rev:'₹0–₹50K/month', pstage:'Launched (basic)', comp:'Moderate — established players', trend:'Trending (popular now)' },
+  ],
+  'Food & Beverage': [
+    { name:'SpiceBox Cloud Kitchen', model:'Authentic regional cuisine cloud kitchen on Swiggy/Zomato', audience:'Office workers & families aged 22–45', revenue:'Per-order + catering packages', cost:'₹1.5L–₹5L', market:'City Level', risk:'Low', bizType:'Street Food', industry:'Food & Beverage', famt:'₹2L – ₹10L', msize:'City Level', rev:'First customers / Beta', pstage:'Launched (basic)', comp:'Moderate — established players', trend:'Growing steadily' },
+    { name:'HealthBite Tiffin', model:'Nutritionist-designed healthy tiffin subscription', audience:'IT professionals & working couples', revenue:'₹149–₹249/day subscription', cost:'₹80K–₹3L', market:'City Level', risk:'Low', bizType:'Service', industry:'Food & Beverage', famt:'₹50K – ₹2L', msize:'City Level', rev:'No revenue yet', pstage:'Idea only', comp:'Few niche competitors', trend:'Growing steadily' },
+  ],
+  'Health & Wellness': [
+    { name:'FitNeighbour', model:'Hyperlocal personal training marketplace app', audience:'Working professionals 25–40 in Tier 1 cities', revenue:'Commission on bookings + premium membership', cost:'₹5L–₹15L', market:'National', risk:'Medium', bizType:'Tech Startup', industry:'HealthTech', famt:'₹10L – ₹50L', msize:'State Level', rev:'No revenue yet', pstage:'Building / In development', comp:'Few niche competitors', trend:'Trending (popular now)' },
+    { name:'MindEase India', model:'Mental wellness subscription app with vernacular content', audience:'Gen Z & millennials in Tier 2 cities', revenue:'₹199/month subscription + corporate B2B', cost:'₹8L–₹25L', market:'National', risk:'Medium', bizType:'SaaS', industry:'HealthTech', famt:'₹10L – ₹50L', msize:'National (India)', rev:'No revenue yet', pstage:'Building / In development', comp:'Few niche competitors', trend:'Trending (popular now)' },
+  ],
+  'Education': [
+    { name:'SkillSprint', model:'15-min micro-skill video platform for blue-collar workers', audience:'Factory & gig workers wanting upskilling', revenue:'₹49/course + employer B2B', cost:'₹3L–₹12L', market:'National', risk:'Low', bizType:'SaaS', industry:'EdTech', famt:'₹2L – ₹10L', msize:'National (India)', rev:'No revenue yet', pstage:'Building / In development', comp:'Few niche competitors', trend:'Growing steadily' },
+  ],
+  'E-Commerce / Retail': [
+    { name:'CraftRoots', model:'Curated Indian handicraft D2C e-commerce platform', audience:'Urban millennials & NRI diaspora gifting', revenue:'30–45% margin on artisan goods', cost:'₹2L–₹8L', market:'International', risk:'Medium', bizType:'E-Commerce', industry:'E-Commerce', famt:'₹2L – ₹10L', msize:'International', rev:'No revenue yet', pstage:'Idea only', comp:'Few niche competitors', trend:'Growing steadily' },
+  ],
+  'Finance / Fintech': [
+    { name:'KiranaCredit', model:'BNPL & micro-credit for kirana store inventory', audience:'Small shop owners in Tier 2–3 cities', revenue:'2–3% transaction fee + interest spread', cost:'₹10L–₹30L', market:'National', risk:'High', bizType:'Tech Startup', industry:'FinTech', famt:'₹50L – ₹1Cr', msize:'National (India)', rev:'No revenue yet', pstage:'Building / In development', comp:'Moderate — established players', trend:'Growing steadily' },
+  ],
+  'Sustainability / Green': [
+    { name:'WasteWise', model:'B2B waste management & recycling logistics for offices', audience:'Corporates & co-working spaces', revenue:'Monthly contract + per-kg collection fee', cost:'₹5L–₹20L', market:'State Level', risk:'Medium', bizType:'Service', industry:'CleanTech', famt:'₹10L – ₹50L', msize:'State Level', rev:'No revenue yet', pstage:'Idea only', comp:'Blue ocean (no direct competitors)', trend:'Growing steadily' },
+  ],
+  'Entertainment / Content': [
+    { name:'StoryCraft Studio', model:'Short-form regional language content studio for brands', audience:'D2C brands targeting vernacular audiences', revenue:'Per-video + retainer model', cost:'₹2L–₹8L', market:'National', risk:'Low', bizType:'Service', industry:'Consumer App', famt:'₹2L – ₹10L', msize:'National (India)', rev:'First customers / Beta', pstage:'Launched (basic)', comp:'Few niche competitors', trend:'Trending (popular now)' },
+  ],
+  'Any (surprise me!)': null,
+};
+
+// @author Yasir Shaikh | https://github.com/YasirShaikh03
+async function generateIdea() {
+  const city    = gv('gen-city') || 'Mumbai';
+  const area    = gv('gen-area') || 'Central';
+  const budget  = gv('gen-budget') || '₹2L – ₹10L';
+  const trend   = gv('gen-trend') || 'Any (surprise me!)';
+  const comp    = gv('gen-comp') || 'Low competition niche';
+  const foot    = gv('gen-footfall') || 'High (market / station area)';
+
+  const btn = g('gen-btn');
+  btn.disabled = true; g('gen-txt').textContent = 'GENERATING...'; g('gen-ico').textContent = '⏳';
+
+  const res = g('gen-result');
+  res.innerHTML = '<div class="gen-loading"><div class="ai-spinner"></div><span>Analyzing market signals for ' + city + '...</span></div>';
+
+  await new Promise(r => setTimeout(r, 1200));
+
+  let idea = null;
+
+  try {
+    if (navigator.onLine) {
+      const prompt = `You are a startup idea generator for India. Generate ONE complete startup idea based on:
+City: ${city}, Area: ${area}, Budget: ${budget}, Trend: ${trend}, Competition: ${comp}, Location: ${foot}
+
+Return ONLY valid JSON (no markdown):
+{
+  "name": "Catchy startup name",
+  "model": "One-line business model description",
+  "audience": "Target audience description",
+  "revenue": "Revenue model description",
+  "cost": "Estimated startup cost range in INR",
+  "market": "Market size (City Level / State Level / National (India) / International)",
+  "risk": "Low / Medium / High",
+  "bizType": "Tech Startup OR SaaS OR E-Commerce OR Service OR Local Shop OR Street Food OR Franchise OR Manufacturing",
+  "industry": "Relevant industry tag",
+  "famt": "One of: Under ₹50K / ₹50K – ₹2L / ₹2L – ₹10L / ₹10L – ₹50L / ₹50L – ₹1Cr / ₹1Cr+",
+  "msize": "One of: Hyper Local (1 area) / City Level / State Level / National (India) / International",
+  "rev": "One of: No revenue yet / First customers / Beta / ₹0–₹50K/month / ₹50K–₹2L/month",
+  "pstage": "One of: Idea only / Building / In development / Launched (basic)",
+  "comp": "One of: Blue ocean (no direct competitors) / Few niche competitors / Moderate — established players / Highly competitive — giants present / Saturated market",
+  "trend": "One of: Dying / Declining / Stable / Flat / Growing steadily / Trending (popular now) / Viral / Explosive growth",
+  "description": "2-3 sentence business description as if the founder is writing it",
+  "usp": "Key unique selling point"
+}`;
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:800, messages:[{role:'user',content:prompt}] })
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const text = data.content.map(b=>b.type==='text'?b.text:'').join('');
+        const clean = text.replace(/```json|```/gi,'').trim();
+        try { idea = JSON.parse(clean); } catch(_) {
+          const s2=clean.indexOf('{'), e2=clean.lastIndexOf('}');
+          if(s2!==-1&&e2>s2) try{idea=JSON.parse(clean.slice(s2,e2+1));}catch(_){}
+        }
+      }
+    }
+  } catch(_) {}
+
+  if (!idea) {
+    let trendKey = trend;
+    if (trendKey === 'Any (surprise me!)' || !IDEA_TEMPLATES[trendKey]) {
+      const keys = Object.keys(IDEA_TEMPLATES).filter(k => k !== 'Any (surprise me!)');
+      trendKey = keys[Math.floor(Math.random() * keys.length)];
+    }
+    const pool = IDEA_TEMPLATES[trendKey] || IDEA_TEMPLATES['AI / Technology'];
+    idea = { ...pool[Math.floor(Math.random() * pool.length)] };
+    idea.description = `${idea.name} is a ${idea.model} based in ${city}. We serve ${idea.audience} with a clear ${idea.revenue} structure. Our biggest advantage is our unique positioning in ${area} targeting an underserved gap in the ${trendKey} space.`;
+    idea.usp = `First-mover in ${area}, ${city} with a focused ${idea.model.split(' ')[0]} approach`;
+  }
+
+  idea.city = city; idea.area = area; idea._autoGenerated = true;
+
+  const riskCol = idea.risk === 'Low' ? 'var(--gr)' : idea.risk === 'Medium' ? 'var(--at)' : 'var(--re)';
+  res.innerHTML = `
+    <div class="gen-card fade-in">
+      <div class="gen-card-header">
+        <div>
+          <div class="gen-name">${idea.name}</div>
+          <div class="gen-model">${idea.model}</div>
+        </div>
+        <span class="gen-risk-badge" style="background:${riskCol}20;border:1px solid ${riskCol};color:${riskCol}">${idea.risk} Risk</span>
+      </div>
+      <div class="gen-grid">
+        <div class="gen-item"><div class="gen-label">🎯 Target Audience</div><div class="gen-value">${idea.audience}</div></div>
+        <div class="gen-item"><div class="gen-label">💰 Revenue Model</div><div class="gen-value">${idea.revenue}</div></div>
+        <div class="gen-item"><div class="gen-label">💸 Estimated Cost</div><div class="gen-value">${idea.cost}</div></div>
+        <div class="gen-item"><div class="gen-label">📊 Market Size</div><div class="gen-value">${idea.market}</div></div>
+        <div class="gen-item gen-item-full"><div class="gen-label">⭐ Unique Selling Point</div><div class="gen-value">${idea.usp || idea.model}</div></div>
+        <div class="gen-item gen-item-full"><div class="gen-label">📝 Description</div><div class="gen-value gen-desc">${idea.description}</div></div>
+      </div>
+      <div class="gen-actions">
+        <button class="btn btn-primary" onclick="applyGeneratedIdea()" style="flex:1;max-width:none">⚡ USE THIS IDEA & ANALYZE NOW</button>
+        <button class="btn btn-outline" onclick="generateIdea()" style="flex:0 0 160px;max-width:none">🔄 Generate Another</button>
+      </div>
+    </div>`;
+
+  window._generatedIdea = idea;
+  btn.disabled = false; g('gen-txt').textContent = 'GENERATE ANOTHER IDEA'; g('gen-ico').textContent = '✨';
+}
+
+/* @author Yasir Shaikh | https://github.com/YasirShaikh03 */
+function applyGeneratedIdea() {
+  const idea = window._generatedIdea;
+  if (!idea) return;
+
+  setIdeaMode('have');
+
+  const setField = (id, val) => { const el = g(id); if (el) el.value = val; };
+  setField('sname', idea.name);
+  setField('city', idea.city || '');
+  setField('area', idea.area || '');
+  setField('description', idea.description || '');
+  setField('famt', idea.famt || '');
+  setField('msize', idea.msize || '');
+  setField('rev', idea.rev || '');
+  setField('pstage', idea.pstage || '');
+  setField('comp', idea.comp || '');
+  setField('trend', idea.trend || '');
+  setField('fstage', 'Self-funded / Bootstrapped');
+  setField('industry', idea.industry || '');
+
+  const tiles = document.querySelectorAll('.biz-tile');
+  tiles.forEach(t => {
+    if (t.dataset.v === idea.bizType) selBiz(t);
+  });
+
+  const fv = g('fv');
+  fv.style.animation = 'none'; fv.offsetHeight;
+  fv.style.animation = '';
+  fv.scrollIntoView({ behavior:'smooth', block:'start' });
+
+  showGenToast(idea.name);
+
+  window._autoGeneratedFlag = true;
+
+  setTimeout(() => {
+    runAnalysis(true);
+  }, 600);
+}
+
+function showGenToast(name) {
+  let t = g('gen-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'gen-toast';
+    t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(167,139,250,.95);color:#fff;font-family:var(--mono);font-size:.75rem;padding:.5rem 1.2rem;border-radius:20px;z-index:9999;letter-spacing:.05em;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+    document.body.appendChild(t);
+  }
+  t.textContent = '✨ "' + name + '" loaded & analyzing...';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+
+/* ══════════════════════════════════════════════════════
+   STATUS CLASSIFICATION
+══════════════════════════════════════════════════════ */
+function getStatusClass(score) {
+  if (score >= 80) return { label:'High Potential 🚀', cls:'status-high', color:'var(--gr)', bg:'rgba(34,197,94,.12)', border:'rgba(34,197,94,.35)' };
+  if (score >= 60) return { label:'Moderate ⚡', cls:'status-mod', color:'var(--at)', bg:'rgba(245,158,11,.12)', border:'rgba(245,158,11,.35)' };
+  if (score >= 40) return { label:'Risky ⚠️', cls:'status-risk', color:'#fb923c', bg:'rgba(251,146,60,.10)', border:'rgba(251,146,60,.3)' };
+  return { label:'Fail Zone ❌', cls:'status-fail', color:'var(--re)', bg:'rgba(248,113,113,.10)', border:'rgba(248,113,113,.3)' };
+}
+
+/* ══════════════════════════════════════════════════════
+   STRENGTHS & WEAKNESSES EXTRACTOR
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
+function extractStrengthsWeaknesses(sc2, fi, isS) {
+  const dims = fi.map(item => ({ label: item.l, score: item.v }));
+  const sorted = [...dims].sort((a,b) => b.score - a.score);
+  const strengths = sorted.slice(0, 3);
+  const weaknesses = [...dims].sort((a,b) => a.score - b.score).slice(0, 3);
+  return { strengths, weaknesses };
+}
+
+/* ══════════════════════════════════════════════════════
+   IMPROVEMENT SUGGESTIONS ENGINE
+══════════════════════════════════════════════════════ */
+function getImprovementSuggestions(d, sc2, isS) {
+  const suggestions = [];
+  if (sl(FA, d.famt, 30) < 40 || sl(FST, d.fstage, 35) < 40) {
+    suggestions.push({ icon:'💼', title:'Boost Funding', tip:'Consider applying to Startup India, SIDBI Fund of Funds, or angel investors in your city. A strong ₹10L–₹50L seed can 2x your score. Government schemes like MUDRA or Stand-Up India offer collateral-free loans.' });
+  }
+  if (d.comp && (d.comp.includes('Saturated') || d.comp.includes('giants'))) {
+    suggestions.push({ icon:'🛡️', title:'Differentiate Strongly', tip:'In a crowded market, win through hyper-niche positioning — serve one customer segment 10x better than anyone. Consider a unique recipe, tech moat, or exclusive location to create defensibility.' });
+  }
+  if (sc2.tracS < 50 || d.rev === 'No revenue yet') {
+    suggestions.push({ icon:'📈', title:'Accelerate Traction', tip:'Get 5 paying customers this week at any price. Run a "beta" launch with 20% discount. Post on LinkedIn, share in WhatsApp groups, and cold-DM 50 potential customers. Revenue is the best marketing.' });
+  }
+  if (d.online && d.online.includes('No online')) {
+    suggestions.push({ icon:'🌐', title:'Build Digital Presence', tip:'Create a simple landing page (Carrd.co, free) + Google Business Profile + Instagram page this week. 80% of customers Google a business before visiting. Zero online presence = invisible business.' });
+  }
+  if (sc2.scal < 45) {
+    suggestions.push({ icon:'📡', title:'Scalability Upgrade', tip:'Document your core process as a step-by-step system. This transforms founder-dependent ops into a scalable machine. Add one digital or aggregator channel to multiply reach without proportional cost.' });
+  }
+  if ((sc2.locS || 50) < 45) {
+    suggestions.push({ icon:'📍', title:'Location Optimization', tip:'Test your business at a higher-footfall spot for one week — railway exits, college gates, or office hubs. Location is the single biggest lever for street and local businesses.' });
+  }
+  if (!suggestions.length) {
+    suggestions.push({ icon:'🚀', title:'Keep Momentum', tip:'Your core fundamentals are solid. Focus on doubling down on your top-performing dimension and maintaining your growth rate. The next 90 days of consistent execution will compound significantly.' });
+  }
+  return suggestions.slice(0, 4);
+}
+
+/* ══════════════════════════════════════════════════════
+   STARTUP ROADMAP GENERATOR
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
+function generateRoadmap(d, score, isS) {
+  const n = d.name || 'Your Business';
+  const city = d.city || 'your city';
+  if (isS) {
+    return {
+      d30: [
+        'Apply for FSSAI Basic Registration (₹100) and trade license from ' + city + ' municipal corporation',
+        'Set up WhatsApp Business + collect numbers from your first 50 customers',
+        'List on Swiggy AND Zomato — requires only FSSAI, bank account, 5 food photos',
+        'Start daily P&L tracking in Google Sheets: revenue, costs, customers, waste',
+        'Ask 15 regulars for a Google Maps review — target 4.5+ stars with 20+ reviews',
+      ],
+      m3: [
+        'Optimize peak-hour menu using 30-day data — cut lowest sellers, double bestsellers',
+        'Introduce 1 premium add-on combo at 40% higher margin (e.g. special sauce, extra portion)',
+        'Reduce daily waste below 8% using demand-batch cooking — prepare 70% then top-up',
+        'Build a WhatsApp broadcast list of 100+ subscribers for daily menu + offers',
+        'Get fully licensed (FSSAI + trade license + police NOC if required)',
+        'Target ₹4,000–₹6,000 daily revenue consistently for 30 days straight',
+      ],
+      m6: [
+        'Scout second location near ' + (d.landmarks && d.landmarks.includes('Station') ? 'college exit' : 'nearest railway station') + ' within 3km',
+        'Standardize recipe, training checklist, and hygiene protocol as a replicable SOP',
+        'Launch cloud kitchen arm from home for delivery-only revenue in parallel',
+        'Introduce corporate tiffin tie-ups with offices near ' + (d.area || city),
+        'Build a 3-month cash buffer before opening second outlet — capital discipline first',
+        'Target ₹10,000+/day from primary location before any expansion spend',
+      ],
+    };
+  }
+  if (score >= 65) {
+    return {
+      d30: [
+        'Prepare a data room: MRR/ARR, cohort retention, CAC/LTV, 3 customer case studies',
+        'Send investment memo to 30 angel investors and micro-VCs in ' + city,
+        'Hire or contract a sales/growth person — founder-led sales does not scale',
+        'Set up weekly OKR review: revenue, active users, churn, burn rate',
+        'Identify your #1 most-profitable customer segment and double down on it',
+      ],
+      m3: [
+        'Close a seed round or angel cheque of ₹25L–₹2Cr to extend runway 12+ months',
+        'Build 3 enterprise reference customers and get written testimonials/case studies',
+        'Launch a referral program — target 30%+ of new revenue from referrals by Month 3',
+        'Launch in one adjacent city or segment to validate replicability of the model',
+        'Implement a customer success workflow — NPS survey + proactive check-in at Day 30',
+        'Target 3x MRR growth over 90 days with documented week-by-week milestones',
+      ],
+      m6: [
+        'Reach ₹50L–₹2Cr ARR with net revenue retention > 110% — this unlocks Series A conversations',
+        'Build a content + inbound marketing engine: 2 articles/week targeting ICP keywords',
+        'Explore partnerships with distribution channels (resellers, platforms, integrations)',
+        'Formalize the leadership team: CTO, Head of Sales, Head of Customer Success',
+        'Prepare Series A pitch deck with 24-month financial model and market narrative',
+        'Begin investor relationship-building 6 months before you need the capital',
+      ],
+    };
+  }
+  return {
+    d30: [
+      'Get 10 paying customers this week at any price — revenue > everything else right now',
+      'Document exactly why each customer bought: pain, alternatives, trigger',
+      'Create a simple landing page with headline + 3 benefits + contact form (Carrd.co)',
+      'Set up weekly 30-min metrics review: revenue, active users, churn, burn',
+      'Find the single riskiest assumption and design the cheapest experiment to test it in 7 days',
+    ],
+    m3: [
+      'Reach ₹25,000–₹1L MRR with 3+ months of consecutive growth',
+      'Interview 20 churned or non-converting prospects — understand the exact objection',
+      'Build a basic CRM (even a Google Sheet) with all prospects and follow-up dates',
+      'File for Startup India DPIIT recognition — unlocks tax benefits + scheme access',
+      'Send investment memo to 15 angels in ' + city + ' — take 3 months to nurture',
+      'Reduce burn by 20% by cutting the 2 lowest-ROI costs immediately',
+    ],
+    m6: [
+      'Close ₹50L–₹2Cr seed round based on 6 months of traction data',
+      'Hire 2 key roles: one technical, one customer-facing — team quality determines ceiling',
+      'Launch in a second segment or geography to prove the model is not single-location',
+      'Build a content + community strategy to drive inbound and reduce paid CAC',
+      'Establish monthly investor updates — even angels appreciate and amplify transparent founders',
+      'Target ₹2–5L MRR by Month 6 as the next fundable milestone',
+    ],
+  };
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER STATUS BLOCK
+══════════════════════════════════════════════════════ */
+function renderStatusBlock(score) {
+  const s = getStatusClass(score);
+  return `<div class="status-block" style="background:${s.bg};border:1px solid ${s.border};border-radius:10px;padding:1rem 1.25rem;margin-bottom:.85rem;display:flex;align-items:center;gap:14px">
+    <div class="status-icon" style="font-size:2.2rem;line-height:1">${s.label.split(' ').pop()}</div>
+    <div>
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:${s.color};margin-bottom:3px">STATUS CLASSIFICATION</div>
+      <div style="font-size:1.15rem;font-weight:700;color:${s.color}">${s.label.split(' ').slice(0,-1).join(' ')}</div>
+      <div style="font-size:.78rem;color:var(--tx);margin-top:2px;line-height:1.5">
+        ${score >= 80 ? 'Top-tier fundamentals. This is a fundable, scalable, high-conviction opportunity.' :
+          score >= 60 ? 'Solid signals with 2–3 addressable gaps. Fix them and this becomes a strong business.' :
+          score >= 40 ? 'Mixed signals. Potential exists but critical structural issues must be resolved first.' :
+                       'Too many foundational gaps. Requires restructuring before any growth investment.'}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER STRENGTH / WEAKNESS BLOCK
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
+function renderSWBlock(sw) {
+  return `<div class="card sw-card fade-in" style="margin-bottom:.85rem">
+    <div class="sec-title">💪 Strengths &amp; Weaknesses</div>
+    <div class="sw-grid">
+      <div class="sw-col">
+        <div class="sw-col-title" style="color:var(--gr)">✅ Top Strengths</div>
+        ${sw.strengths.map(s=>`<div class="sw-item sw-str">
+          <div class="sw-bar-wrap"><div class="sw-bar" style="width:${s.score}%;background:var(--gr)"></div></div>
+          <div class="sw-row"><span class="sw-label">${s.label}</span><span class="sw-score" style="color:var(--gr)">${s.score}</span></div>
+        </div>`).join('')}
+      </div>
+      <div class="sw-col">
+        <div class="sw-col-title" style="color:var(--re)">⚠️ Key Weaknesses</div>
+        ${sw.weaknesses.map(w=>`<div class="sw-item sw-weak">
+          <div class="sw-bar-wrap"><div class="sw-bar" style="width:${w.score}%;background:var(--re)"></div></div>
+          <div class="sw-row"><span class="sw-label">${w.label}</span><span class="sw-score" style="color:var(--re)">${w.score}</span></div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER IMPROVEMENT SUGGESTIONS
+══════════════════════════════════════════════════════ */
+function renderSuggestions(suggestions) {
+  return `<div class="card fade-in" style="margin-bottom:.85rem">
+    <div class="sec-title">🔧 Improvement Suggestions</div>
+    <div class="sugg-grid">
+      ${suggestions.map(s=>`<div class="sugg-item">
+        <div class="sugg-icon">${s.icon}</div>
+        <div class="sugg-body">
+          <div class="sugg-title">${s.title}</div>
+          <div class="sugg-tip">${s.tip}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER ROADMAP BLOCK
+══════════════════════════════════════════════════════ */
+function renderRoadmap(roadmap) {
+  const phaseHtml = (label, icon, items, color) => `
+    <div class="rm-phase">
+      <div class="rm-phase-hdr" style="color:${color}">${icon} ${label}</div>
+      <div class="rm-phase-items">
+        ${items.map((item,i)=>`<div class="rm-item"><span class="rm-num" style="background:${color}20;color:${color}">${i+1}</span><span>${item}</span></div>`).join('')}
+      </div>
+    </div>`;
+
+  return `<div class="card fade-in" style="margin-bottom:.85rem;border-color:rgba(245,158,11,.25)">
+    <div class="sec-title">🗓️ What You Should Do Next — Startup Roadmap</div>
+    <div class="rm-wrap">
+      ${phaseHtml('30-Day Sprint', '🏃', roadmap.d30, 'var(--re)')}
+      ${phaseHtml('3-Month Milestones', '📅', roadmap.m3, 'var(--at)')}
+      ${phaseHtml('6-Month Scaling Plan', '🚀', roadmap.m6, 'var(--gr)')}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER BENCHMARK RADAR + BAR
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
+function renderEnhancedCharts(sc2, fi, d, isS) {
+  const bm = BENCHMARKS[d.bizType || (isS ? 'Street Food' : 'Tech Startup')] || BENCHMARKS['default'];
+  return `<div class="card fade-in" style="margin-bottom:.85rem">
+    <div class="sec-title">📊 Benchmark Comparison — Radar + Bar</div>
+    <div class="chart-grid" style="grid-template-columns:1fr 1fr">
+      <div class="chart-card"><div class="chart-title">📡 Score Radar — You vs Benchmark</div><div class="chart-wrap"><canvas id="ch-sw-radar"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">📊 Category Bar Score</div><div class="chart-wrap"><canvas id="ch-sw-bar"></canvas></div></div>
+    </div>
+  </div>`;
+}
+
+function drawEnhancedCharts(sc2, fi, d, isS) {
+  setTimeout(() => {
+    if (typeof Chart === 'undefined') return;
+    const bm = BENCHMARKS[d.bizType || (isS ? 'Street Food' : 'Tech Startup')] || BENCHMARKS['default'];
+    const radarEl = g('ch-sw-radar');
+    if (radarEl) {
+      charts['sw-radar'] = new Chart(radarEl, {
+        type: 'radar',
+        data: {
+          labels: ['Survival','Profit','Scale','Local Dom.','Overall'],
+          datasets: [
+            { label:'Your Score', data:[sc2.surv, sc2.prof, sc2.scal, sc2.ldom, sc2.compositeScore], backgroundColor:'rgba(245,158,11,.12)', borderColor:'#f59e0b', borderWidth:2, pointBackgroundColor:'#f59e0b', pointRadius:4 },
+            { label:'Benchmark', data:[bm.surv, bm.prof, bm.scal, bm.ldom, (bm.surv+bm.prof+bm.scal+bm.ldom)/4], backgroundColor:'rgba(96,165,250,.08)', borderColor:'#60a5fa', borderWidth:1.5, pointBackgroundColor:'#60a5fa', pointRadius:3, borderDash:[4,4] },
+          ]
+        },
+        options: { responsive:true, maintainAspectRatio:false, scales:{ r:{ min:0, max:100, ticks:{display:false}, grid:{color:'rgba(255,255,255,.05)'}, angleLines:{color:'rgba(255,255,255,.05)'}, pointLabels:{color:'#8892b0',font:{size:9}} } }, plugins:{ legend:{position:'bottom',labels:{color:'#8892b0',font:{size:9},boxWidth:10,padding:6}} } }
+      });
+    }
+    const barEl = g('ch-sw-bar');
+    if (barEl) {
+      charts['sw-bar'] = new Chart(barEl, {
+        type: 'bar',
+        data: {
+          labels: fi.map(i=>i.l.split(' ').slice(0,2).join(' ')),
+          datasets: [
+            { label:'Your Score', data:fi.map(i=>i.v), backgroundColor:fi.map(i=>i.v>=70?'rgba(34,197,94,.7)':i.v>=50?'rgba(245,158,11,.7)':'rgba(239,68,68,.7)'), borderRadius:4 },
+          ]
+        },
+        options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:{ x:{min:0,max:100,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#5a6380',font:{size:8}}}, y:{grid:{display:false},ticks:{color:'#8892b0',font:{size:8}}} }, plugins:{legend:{display:false}} }
+      });
+    }
+  }, 250);
+}
+
+/* ══════════════════════════════════════════════════════
+   GENERATED IDEA SUMMARY BLOCK
+══════════════════════════════════════════════════════ */
+function renderIdeaSummary(d) {
+  if (!d._autoGenerated) return '';
+  return `<div class="idea-summary-box fade-in" style="margin-bottom:.85rem">
+    <div class="idea-sum-lbl">✨ AUTO-GENERATED IDEA</div>
+    <div class="idea-sum-name">${d.name}</div>
+    <div class="idea-sum-desc">${d.description || ''}</div>
+  </div>`;
+}
+
+// ── BENCHMARK DATA ──
+// @author Yasir Shaikh | https://github.com/YasirShaikh03
 const BENCHMARKS = {
   'Street Food':    { surv:58, prof:52, scal:41, ldom:62, comp:67 },
   'Tech Startup':   { surv:44, prof:38, scal:61, ldom:39, comp:52 },
@@ -72,8 +567,7 @@ function selBiz(el) {
   else { sf.classList.add('hidden'); if (streetMode) toggleMode(); }
 }
 
-function updateHC() { const e = g('hcnt'); if (e) e.textContent = history.length; }/*         <!-- Author
-Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
+function updateHC() { const e = g('hcnt'); if (e) e.textContent = history.length; }
 function toggleHist() { const p = g('hpanel'); p.classList.toggle('hidden'); renderHL(); }
 function renderHL() {
   const el = g('hlist'); if (!el) return;
@@ -95,8 +589,19 @@ function exportAll() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(b);
   a.download = 'sip_history.json'; a.click();
 }
+
+// @author Yasir Shaikh | https://github.com/YasirShaikh03
 function saveHistory(d, scores) {
-  const entry = { id: Date.now(), name: d.name, bizType: d.bizType, city: d.city, score: scores.compositeScore, ts: new Date().toLocaleString('en-IN'), data: d, scores };
+  const fi = fiItems(d, scores, d.isStreet || streetMode);
+  const sw = extractStrengthsWeaknesses(scores, fi, d.isStreet || streetMode);
+  const entry = {
+    id: Date.now(), name: d.name, bizType: d.bizType, city: d.city,
+    score: scores.compositeScore, ts: new Date().toLocaleString('en-IN'),
+    data: d, scores,
+    generatedIdea: d._autoGenerated || false,
+    strengths: sw.strengths.map(s=>s.label),
+    weaknesses: sw.weaknesses.map(w=>w.label),
+  };
   history.unshift(entry);
   if (history.length > 20) history = history.slice(0, 20);
   try { localStorage.setItem('sip_history', JSON.stringify(history)); } catch(e) {}
@@ -126,6 +631,10 @@ function collect() {
   };
 }
 
+/* ══════════════════════════════════════════════════════
+   ML MULTIPLIER ENGINE
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
 function mlMult(d, base) {
   let m = 1.0;
   const fm = sl(FE, d.fexp, .68), tr = sl(TS, d.tsize, 45);
@@ -141,7 +650,17 @@ function mlMult(d, base) {
   if (d.pstage === 'Product-market fit found') m *= 1.07;
   if (d.comp === 'Saturated market') m *= .90;
   if (d.license === 'No License' || d.licSt === 'No License') m *= .88;
-  return Math.max(.65, Math.min(1.28, m));
+  const fp = sl(FS, d.footfall, 45);
+  if (fp >= 82) m *= 1.05;
+  if (fp <= 22) m *= .90;
+  if (tn >= 85) m *= 1.06;
+  if (tn <= 10) m *= .82;
+  const cm = sl(CM, d.comp, 55);
+  if (cm >= 82) m *= 1.05;
+  if (cm <= 22) m *= .87;
+  if (rv >= 62 && d.margin >= 40) m *= 1.04;
+  if (d._autoGenerated) m *= 1.02;
+  return Math.max(.60, Math.min(1.32, m));
 }
 
 function computeStartup(d) {
@@ -220,6 +739,10 @@ function getPct(score) {
   if (score >= 55) return 55; if (score >= 45) return 38; if (score >= 35) return 22; return 12;
 }
 
+/* ══════════════════════════════════════════════════════
+   FEATURE IMPORTANCE ITEMS
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
 function fiItems(d, sc2, isS) {
   if (isS) return [
     { l:'Location Quality', v:Math.min(98, Math.round(sc2.locS*.95)),  w:`${d.footfall||'?'} footfall + ${d.landmarks||'landmark'} proximity — 28% of total score` },
@@ -250,8 +773,7 @@ function explItems(d, sc2, isS) {
   } else {
     items.push({ f:'Traction (24%)', w:`${d.rev||'No revenue'} → ${sl(RV,d.rev,10)}/100 ${d.rev==='No revenue yet'?'— applies ×0.84 penalty':'— revenue de-risks everything'}`, im:`${sc2.tracS}/100`, t:sc2.tracS>=60?'p':'n' });
     items.push({ f:'Founder (18%)', w:`${d.fexp||'Unknown'} → ${Math.round((sc2.fm||.68)*100)}% multiplier applied to team score`, im:`×${(sc2.fm||.68).toFixed(2)}`, t:(sc2.fm||.68)>=.80?'p':'n' });
-    items.push({ f:'Market (20%)', w:`TAM + competition + trend → ${sc2.mktS}/100`, im:`${sc2.mktS}/100`, t:sc2.mktS>=60?'p':'n' });/*         <!-- Author
-Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
+    items.push({ f:'Market (20%)', w:`TAM + competition + trend → ${sc2.mktS}/100`, im:`${sc2.mktS}/100`, t:sc2.mktS>=60?'p':'n' });
   }
   return items;
 }
@@ -399,6 +921,10 @@ function renderAI(ai, isOffline) {
     </div>`;
 }
 
+/* ══════════════════════════════════════════════════════
+   RENDER RESULT
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
 function renderResult(d, sc2, isS) {
   destroyCharts();
   const score = sc2.compositeScore, v = verdictStyle(score), c = sc(score);
@@ -407,6 +933,16 @@ function renderResult(d, sc2, isS) {
   const loc   = locInsight(d, sc2.locS || 50);
   const steps = scaleSteps(d, score, isS);
   const pct   = getPct(score);
+
+  const statusHtml = renderStatusBlock(score);
+  const sw         = extractStrengthsWeaknesses(sc2, fi, isS);
+  const swHtml     = renderSWBlock(sw);
+  const suggestions= getImprovementSuggestions(d, sc2, isS);
+  const suggHtml   = renderSuggestions(suggestions);
+  const roadmap    = generateRoadmap(d, score, isS);
+  const roadmapHtml= renderRoadmap(roadmap);
+  const ideaSumHtml= renderIdeaSummary(d);
+  const enhCharts  = renderEnhancedCharts(sc2, fi, d, isS);
 
   const mlBadges = [];
   if (sc2.mlAdj > 5)  mlBadges.push({ c:'g', t:`+${sc2.mlAdj}% ML BOOST` });
@@ -443,7 +979,11 @@ function renderResult(d, sc2, isS) {
   const eId = Date.now();
   g('rv').innerHTML = `<div class="fade-in">
 
+    ${ideaSumHtml}
+
     ${d.description ? `<div class="desc-res"><div class="desc-res-lbl">📝 BUSINESS DESCRIPTION</div><p style="font-size:.85rem;color:var(--tx);line-height:1.72;white-space:pre-wrap">${d.description}</p></div>` : ''}
+
+    ${statusHtml}
 
     <div class="card" style="text-align:center;margin-bottom:.85rem">
       <div class="sec-title center">${isS ? '🍜 Street Report' : '🚀 Intelligence Report'} — ${d.name}</div>
@@ -488,6 +1028,14 @@ function renderResult(d, sc2, isS) {
       <div class="sec-title">📊 Feature Importance — What's Driving the Score & Why</div>
       ${fi.map(({l,v,w})=>`<div class="bar-row"><span class="bar-lbl">${l}</span><div class="bar-trk"><div class="bar-fil" style="width:${v}%;background:${sc(v)}"></div></div><span class="bar-val">${v}</span><div class="bar-why">${w}</div></div>`).join('')}
     </div>
+
+    ${swHtml}
+
+    ${suggHtml}
+
+    ${enhCharts}
+
+    ${roadmapHtml}
 
     <div class="card" style="margin-bottom:.85rem">
       <div class="sec-title">🚀 10-Step Scaling Roadmap</div>
@@ -598,6 +1146,7 @@ function renderResult(d, sc2, isS) {
 
   g('rv').classList.remove('hidden');
   drawCharts(sc2, fi, isS, d);
+  drawEnhancedCharts(sc2, fi, d, isS);
   setTimeout(() => {
     renderBenchmark(d, sc2, isS);
     initForecast(d, sc2);
@@ -628,9 +1177,10 @@ function stopLoader() {
   const e = g('progfill'); if (e) e.style.width = '100%';
 }
 
-// claude api call
-
-// offline engine - runs locally, no internet needed
+/* ══════════════════════════════════════════════════════════
+   OFFLINE AI ENGINE
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════════ */
 function offlineAnalysis(d, scores) {
   const n    = d.name || 'Your Business';
   const city = d.city || 'your city';
@@ -639,11 +1189,9 @@ function offlineAnalysis(d, scores) {
   const sc   = scores.compositeScore;
   const hi   = v => v >= 70;
   const lo   = v => v < 50;
-  const loc  = (d.area && d.city) ? (area + ', ' + city) : city;/*         <!-- Author
-Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
+  const loc  = (d.area && d.city) ? (area + ', ' + city) : city;
   const mg   = d.margin > 0 ? d.margin + '%' : 'undefined';
 
-  // summary
   let summary = '';
   if (isS) {
     summary = n + ' is a ' + (d.foodType||'street food') + ' business' + (d.stallType ? ' operating as a ' + d.stallType : '') + ' in ' + loc + ', targeting ' + (d.crowdType||'local customers') + ' near ' + (d.landmarks||'key landmarks') + '. ';
@@ -655,7 +1203,6 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     summary += d.description ? 'The founder frames it as: "' + d.description.slice(0,110) + (d.description.length>110?'…':'') + '" — which captures both the opportunity and the core challenge.' : 'The path forward centers on achieving product-market fit and building defensible revenue traction.';
   }
 
-  // strengths
   var strengths = [];
   if (isS) {
     if (hi(scores.ldom)) strengths.push('Strong local dominance in ' + loc + ' — footfall near ' + (d.landmarks||'key landmark') + ' gives ' + n + ' a built-in customer pipeline that competitors cannot easily replicate');
@@ -683,7 +1230,6 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     if (strengths.length < 6) strengths.push('The founder\'s direct involvement in early sales creates institutional knowledge about customer psychology that no hired salesperson can replicate later');
   }
 
-  // risks
   var risks = [];
   if (isS) {
     if (d.weather === 'High (rain stops business)') risks.push('Extreme weather dependency — rain directly halts revenue for ' + n + ', creating dangerous cash flow gaps during monsoon months in ' + city + ' without a covered or indoor contingency plan');
@@ -709,7 +1255,6 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     if (risks.length < 6) risks.push('Early-stage hiring in ' + city + ' at affordable salaries is increasingly difficult — talent competition from larger tech companies creates structural cost pressure on the salary line');
   }
 
-  // opportunities
   var opps = [];
   if (isS) {
     if (d.landmarks && (d.landmarks.includes('College') || d.landmarks.includes('Station') || d.landmarks.includes('Office'))) opps.push(d.landmarks + ' proximity is an untapped bulk revenue opportunity — corporate tiffin tie-ups, office catering, or college event partnerships can add Rs 15K–40K per month with zero extra footfall required');
@@ -725,7 +1270,6 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     if (opps.length < 4 && d.expansion && !d.expansion.includes('No expansion')) opps.push('The ' + d.expansion + ' model is the right path for ' + n + '\'s stage — but the first expansion must be the documented template for 10 more, so investing in systems now has 10x future ROI');
   }
 
-  // actions
   var actions = [];
   if (isS) {
     if (!d.licSt || d.licSt.includes('No') || d.licSt.includes('Partial')) actions.push('Apply for FSSAI Basic Registration (Rs 100, at foscos.fssai.gov.in) and trade license from ' + city + ' municipal corporation this week — this is the single highest-ROI action available to ' + n);
@@ -743,7 +1287,6 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     actions.push('Identify ' + n + '\'s single riskiest assumption — the one thing, if wrong, that ends the business — and design the cheapest possible experiment to test it within 7 days');
   }
 
-  // scaling path
   var scaling = '';
   if (isS) {
     scaling = n + '\'s scaling path in ' + city + ' follows a proven playbook: dominate one location completely before opening a second. ';
@@ -758,15 +1301,12 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     scaling += 'Building a distribution moat — through integrations, partnerships, or network effects — is the Year 2 strategic priority, because ' + (d.industry||'this industry') + ' ultimately rewards whoever owns the customer relationship, not whoever has the best product.';
   }
 
-  // verdict
   var verdict = '';
   if (sc >= 75) verdict = n + ' is a ' + (isS ? 'well-run, high-potential street business' : 'fundable, scalable startup') + ' with the right fundamentals in place — execute on the 5 priority actions above and the next 12 months will compound significantly.';
   else if (sc >= 60) verdict = n + ' has real potential currently constrained by ' + (isS ? (lo(scores.ldom) ? 'location and licensing gaps' : 'digital presence and aggregator absence') : (lo(scores.tracS) ? 'lack of revenue traction' : 'team and funding gaps')) + ' — fix these two levers and the score jumps 15–20 points within 90 days.';
   else if (sc >= 45) verdict = n + ' is at the critical inflection point where the next 60 days of focused execution will determine whether this becomes a real business or stays a side project — the fundamentals are present, the urgency is not.';
-  else verdict = n + ' needs structural changes, not optimizations, before growth is meaningful — the specific gaps are clear and fixable within 3 months with the right prioritization and discipline.';/*         <!-- Author
-Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
+  else verdict = n + ' needs structural changes, not optimizations, before growth is meaningful — the specific gaps are clear and fixable within 3 months with the right prioritization and discipline.';
 
-  // hidden insight
   var hidden = '';
   if (isS) {
     if (d.repeatRate >= 60 && d.dailyCust > 0) hidden = n + '\'s ' + d.repeatRate + '% repeat rate at ' + d.dailyCust + ' daily customers means roughly ' + Math.round(d.dailyCust * d.repeatRate / 100) + ' customers return every day. This loyal core is more valuable than walk-in traffic because they are a free distribution network. Converting just 20 of them into WhatsApp pre-order subscribers eliminates your single biggest financial risk — waste — while guaranteeing a daily revenue floor.';
@@ -778,15 +1318,22 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
     else hidden = 'The most overlooked asset ' + n + ' has is the specific knowledge of why the first paying customers bought — the exact job-to-be-done, the pain, the alternatives they considered. This insight is worth more than any market research report and should be the foundation of every pitch, landing page, and product decision for the next 12 months.';
   }
 
-  // confidence score
   var aiScore = Math.round(sc * 0.85 + (d.description && d.description.length > 50 ? 8 : 0) + (d.city ? 3 : 0) + (d.margin > 30 ? 4 : 0));
   aiScore = Math.max(12, Math.min(96, aiScore));
 
   return { summary: summary, strengths: strengths.slice(0,6), risks: risks.slice(0,6), opportunities: opps.slice(0,4), actions: actions.slice(0,5), scaling: scaling, verdict: verdict, hidden_insight: hidden, gemini_score: aiScore };
 }
 
-async function runAnalysis() {
+/* ══════════════════════════════════════════════════════
+   RUN ANALYSIS
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+══════════════════════════════════════════════════════ */
+async function runAnalysis(autoGenerated) {
   const d = collect();
+  if (autoGenerated || window._autoGeneratedFlag) {
+    d._autoGenerated = true;
+    window._autoGeneratedFlag = false;
+  }
   const isS = d.bizType === 'Street Food' || streetMode;
   const btn = g('abtn');
 
@@ -814,7 +1361,6 @@ async function runAnalysis() {
     const ph = g('ai-ph');
     const s  = { compositeScore: scores.compositeScore, surv: scores.surv, prof: scores.prof, scal: scores.scal, ldom: scores.ldom };
 
-    // Always generate offline analysis instantly
     const offlineResult = offlineAnalysis(d, s);
 
     if (!navigator.onLine) {
@@ -822,7 +1368,6 @@ async function runAnalysis() {
       return;
     }
 
-    // Online: try Claude API, silently fall back to offline engine on any failure
     try {
       const prompt = 'You are an expert startup and business analyst. Return ONLY valid JSON, no markdown.\n\nBusiness: ' + d.name + ' | Type: ' + (d.bizType||'') + ' | Location: ' + loc(d) + ' | Score: ' + scores.compositeScore + '/100\nDescription: "' + d.description + '"\nML: Survival=' + scores.surv + ' Profit=' + scores.prof + ' Scale=' + scores.scal + ' Local=' + scores.ldom + '\n\nReturn exactly: {"summary":"...","strengths":["...x6"],"risks":["...x6"],"opportunities":["...x4"],"actions":["...x5"],"scaling":"...","verdict":"...","hidden_insight":"...","gemini_score":75}';
 
@@ -844,7 +1389,6 @@ async function runAnalysis() {
       if (ph) ph.innerHTML = renderAI(ai || offlineResult, !ai);
 
     } catch(_) {
-      // API unavailable — use offline engine silently, no error shown to user
       if (ph) ph.innerHTML = renderAI(offlineResult, true);
     }
   }
@@ -859,7 +1403,9 @@ function resetForm() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// benchmark comparison
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 1 — BENCHMARK COMPARISON
+═══════════════════════════════════════════════════════════════ */
 function renderBenchmark(d, sc2, isS) {
   const el = g('benchmark-body');
   if (!el) return;
@@ -870,8 +1416,7 @@ function renderBenchmark(d, sc2, isS) {
     { label: 'Profitability',   user: sc2.prof,  bench: avg.prof  },
     { label: 'Scalability',     user: sc2.scal,  bench: avg.scal  },
     { label: 'Local Dominance', user: sc2.ldom,  bench: avg.ldom  },
-    { label: 'Overall Score',   user: sc2.compositeScore, bench: avg.comp },/*         <!-- Author
-Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
+    { label: 'Overall Score',   user: sc2.compositeScore, bench: avg.comp },
   ];
 
   const rows = dims.map(dim => {
@@ -909,7 +1454,10 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
   `;
 }
 
-// 18-month revenue forecast
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 2 — ADVANCED REVENUE FORECAST
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+═══════════════════════════════════════════════════════════════ */
 let forecastChart = null;
 function initForecast(d, sc2) {
   const gr = d.growthRate > 0 ? d.growthRate : 10;
@@ -923,8 +1471,7 @@ function initForecast(d, sc2) {
 function updateForecast() {
   const d  = currentAnalysisData;
   if (!d) return;
-  const gr     = parseFloat((g('fc-growth') || {value:'10'}).value) / 100;/*         <!-- Author
-Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
+  const gr     = parseFloat((g('fc-growth') || {value:'10'}).value) / 100;
   const seasMult = parseFloat((g('fc-season') || {value:'1'}).value);
   const scenario = (g('fc-scenario') || {value:'base'}).value;
   const fv = g('fc-growth-val');
@@ -994,7 +1541,9 @@ Yasir Shaikh GitHub: https://github.com/YasirShaikh03 -->*/
   }
 }
 
-// multi-turn chat with claude
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 3 — MULTI-TURN CLAUDE AI CHAT
+═══════════════════════════════════════════════════════════════ */
 function initChat(d, sc2, isS) {
   chatMessages = [];
   const el = g('chat-msgs');
@@ -1008,6 +1557,7 @@ function askSuggestion(el) {
   sendChat();
 }
 
+// @author Yasir Shaikh | https://github.com/YasirShaikh03
 async function sendChat() {
   if (chatBusy) return;
   const inp   = g('chat-input');
@@ -1021,14 +1571,11 @@ async function sendChat() {
   chatBusy = true;
   if (btn) { btn.textContent = '...'; btn.disabled = true; }
 
-  // hide the suggestion chips after first message
   const sug = g('chat-suggestions');
   if (sug) sug.style.display = 'none';
 
-  // add user message to chat
   msgsEl.innerHTML += `<div class="chat-msg chat-user"><div class="chat-bubble">${q}</div></div>`;
 
-  // show a thinking animation while waiting
   const thinkId = 'think-' + Date.now();
   msgsEl.innerHTML += `<div class="chat-msg chat-assistant" id="${thinkId}"><div class="chat-bubble chat-thinking"><span class="dot-pulse"></span><span class="dot-pulse"></span><span class="dot-pulse"></span></div></div>`;
   msgsEl.scrollTop = msgsEl.scrollHeight;
@@ -1102,7 +1649,10 @@ function getChatOfflineReply(q, d, sc2, isS) {
   return `Based on ${n}'s score of ${s}/100, the most impactful next move is addressing your weakest dimension — ${sc2 && sc2.surv < 50 ? 'survival fundamentals like licensing and cash flow' : sc2 && sc2.scal < 50 ? 'scalability by building repeatable systems' : sc2 && sc2.ldom < 50 ? 'local dominance through digital presence and aggregators' : 'maintaining momentum and pushing toward the next milestone'}. What specific aspect would you like to dig into?`;
 }
 
-// pdf export
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 4 — PDF REPORT EXPORT
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+═══════════════════════════════════════════════════════════════ */
 function exportPDF() {
   const d   = currentAnalysisData;
   const sc2 = currentAnalysisScores;
@@ -1258,7 +1808,9 @@ function generateQuickActions(d, sc2, isS) {
   return out;
 }
 
-// shareable report link
+/* ═══════════════════════════════════════════════════════════════
+   FEATURE 5 — SHAREABLE REPORT LINK
+═══════════════════════════════════════════════════════════════ */
 function shareReport() {
   const d   = currentAnalysisData;
   const sc2 = currentAnalysisScores;
@@ -1330,7 +1882,10 @@ function checkShareHash() {
   } catch(_) {}
 }
 
-// what-if scenario engine
+/* ═══════════════════════════════════════════════════════════════
+   WHAT-IF SCENARIO ENGINE
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+═══════════════════════════════════════════════════════════════ */
 const WHATIF_SCENARIOS = [
   { id:'price',    label:'Double my price',         icon:'💰', fn:(d,s)=>({ surv:cl(s.surv+2),  prof:cl(s.prof+18), scal:cl(s.scal-5),  ldom:cl(s.ldom+3),  comp:cl(s.compositeScore+8),  note:'Higher price boosts margin & profit score but may reduce volume — net positive if demand is inelastic.' }) },
   { id:'delivery', label:'Add Swiggy/Zomato',        icon:'🛵', fn:(d,s)=>({ surv:cl(s.surv+5),  prof:cl(s.prof+10), scal:cl(s.scal+15), ldom:cl(s.ldom+12), comp:cl(s.compositeScore+10), note:'Aggregators add a parallel revenue channel, expand reach to 5km radius, and improve digital score significantly.' }) },
@@ -1390,7 +1945,9 @@ function applyWhatIf(id) {
   if (card) card.classList.add('active');
 }
 
-// break-even calculator
+/* ═══════════════════════════════════════════════════════════════
+   BREAK-EVEN CALCULATOR
+═══════════════════════════════════════════════════════════════ */
 let beChart = null;
 function initBreakevenDefaults(d) {
   const fixedEl = g('be-fixed'), varEl = g('be-var'), priceEl = g('be-price');
@@ -1447,7 +2004,9 @@ function updateBreakeven() {
   });
 }
 
-// funding readiness meter
+/* ═══════════════════════════════════════════════════════════════
+   FUNDING READINESS METER
+═══════════════════════════════════════════════════════════════ */
 function renderFundingMeter(d, sc2, isS) {
   const el = g('funding-body');
   if (!el) return;
@@ -1491,7 +2050,10 @@ function renderFundingMeter(d, sc2, isS) {
   `;
 }
 
-// government scheme matcher
+/* ═══════════════════════════════════════════════════════════════
+   GOVERNMENT SCHEME MATCHER
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+═══════════════════════════════════════════════════════════════ */
 const SCHEMES = [
   { name:'Pradhan Mantri Mudra Yojana (PMMY)', amount:'Up to ₹10L', type:['Street Food','Local Shop','Service','Manufacturing','Franchise'], desc:'Micro loans for non-farm enterprises. Shishu (up to ₹50K), Kishore (₹50K–5L), Tarun (₹5L–10L). No collateral required.', link:'https://www.mudra.org.in', badge:'🟢 LIKELY ELIGIBLE' },
   { name:'Startup India Seed Fund', amount:'Up to ₹20L', type:['Tech Startup','SaaS','E-Commerce'], desc:'For DPIIT-recognized startups at ideation/validation stage. Non-dilutive grant + soft loan through SEBI-registered incubators.', link:'https://seedfund.startupindia.gov.in', badge:'🟢 ELIGIBLE' },
@@ -1528,7 +2090,9 @@ function renderSchemes(d, isS) {
   `;
 }
 
-// compliance checklist
+/* ═══════════════════════════════════════════════════════════════
+   GST & COMPLIANCE CHECKLIST
+═══════════════════════════════════════════════════════════════ */
 function renderCompliance(d, isS) {
   const el = g('compliance-body');
   if (!el) return;
@@ -1570,7 +2134,10 @@ function renderCompliance(d, isS) {
   `;
 }
 
-// pitch deck generator
+/* ═══════════════════════════════════════════════════════════════
+   INVESTOR PITCH DECK GENERATOR
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+═══════════════════════════════════════════════════════════════ */
 async function generatePitchDeck() {
   const d   = currentAnalysisData;
   const sc2 = currentAnalysisScores;
@@ -1680,7 +2247,9 @@ ${slides.map((s,i)=>`<div class="slide"><div class="s-num">${s.num} / 10</div><d
   setTimeout(()=>win.print(),500);
 }
 
-// business plan writer
+/* ═══════════════════════════════════════════════════════════════
+   AI BUSINESS PLAN WRITER
+═══════════════════════════════════════════════════════════════ */
 async function generateBizPlan() {
   const d   = currentAnalysisData;
   const sc2 = currentAnalysisScores;
@@ -1774,7 +2343,10 @@ ${sections.map(s=>`<div class="sec"><div class="sec-hdr">${s.icon} ${s.title}</d
   setTimeout(()=>win.print(),500);
 }
 
-// monthly score tracker
+/* ═══════════════════════════════════════════════════════════════
+   MONTHLY SCORE TRACKER
+   @author Yasir Shaikh | https://github.com/YasirShaikh03
+═══════════════════════════════════════════════════════════════ */
 let trackerChart = null;
 function renderTracker(d, sc2) {
   const el = g('tracker-body');
@@ -1782,7 +2354,6 @@ function renderTracker(d, sc2) {
   let tData = [];
   try { const s = localStorage.getItem('sip_tracker'); if(s) tData = JSON.parse(s); } catch(_) {}
 
-  // auto-save this analysis to tracker
   const month = new Date().toLocaleDateString('en-IN',{month:'short',year:'numeric'});
   const existing = tData.findIndex(t => t.name===d.name && t.month===month);
   const entry = { name:d.name, month, score:sc2.compositeScore, surv:sc2.surv, prof:sc2.prof, scal:sc2.scal, ldom:sc2.ldom, ts:Date.now() };
@@ -1837,13 +2408,14 @@ function renderTracker(d, sc2) {
   });
 }
 
-// comparison engine (pick 2–5 from history)
+/* ═══════════════════════════════════════════════════════════════
+   COMPARISON ENGINE
+═══════════════════════════════════════════════════════════════ */
 
-let cmpSelected = new Set();   // indices into history[]
+let cmpSelected = new Set();
 let cmpChart    = null;
 const CMP_COLORS = ['#f59e0b','#22c55e','#60a5fa','#a78bfa','#fb7185'];
 
-// show all history entries as selectable cards
 function renderComparison() {
   const el = g('cmp-body');
   if (!el) return;
@@ -1881,26 +2453,25 @@ function renderComparison() {
     <div id="cmp-result"></div>`;
 }
 
+// @author Yasir Shaikh | https://github.com/YasirShaikh03
 function toggleCmp(idx) {
   if (cmpSelected.has(idx)) {
     cmpSelected.delete(idx);
     const el = g('cmp-pick-' + idx);
     if (el) el.classList.remove('on');
   } else {
-    if (cmpSelected.size >= 5) return;   // hard cap at 5
+    if (cmpSelected.size >= 5) return;
     cmpSelected.add(idx);
     const el = g('cmp-pick-' + idx);
     if (el) el.classList.add('on');
   }
 
-  // update the selection counter
   const counter = g('cmp-counter');
   if (counter) {
     counter.textContent = `${cmpSelected.size} / 5 selected`;
     counter.className = 'cmp-counter' + (cmpSelected.size >= 5 ? ' full' : cmpSelected.size >= 2 ? ' ready' : '');
   }
 
-  // gray out the rest once 5 are selected
   document.querySelectorAll('.cmp-pick').forEach((el, i) => {
     if (!cmpSelected.has(i) && cmpSelected.size >= 5) el.classList.add('cmp-disabled');
     else el.classList.remove('cmp-disabled');
@@ -1938,7 +2509,6 @@ function buildCmpResult() {
     ? (entry.scores?.compositeScore || entry.score || 0)
     : (entry.scores?.[key] || 0);
 
-  // find best and worst per dimension
   const best = {}, worst = {};
   dims.forEach(d => {
     const vals = entries.map(e => getV(e, d.key));
@@ -1953,7 +2523,6 @@ function buildCmpResult() {
     <div class="cmp-table-wrap">
       <div class="cmp-table">
 
-        <!-- HEADER ROW -->
         <div class="cmp-row cmp-hdr-row">
           <div class="cmp-cell cmp-dim-cell"></div>
           ${entries.map((e, i) => `
@@ -1965,7 +2534,6 @@ function buildCmpResult() {
             </div>`).join('')}
         </div>
 
-        <!-- SCORE ROWS -->
         ${dims.map((dim, di) => `
           <div class="cmp-row ${di === 0 ? 'cmp-total-row' : ''}">
             <div class="cmp-cell cmp-dim-cell">${dim.label}</div>
@@ -1973,7 +2541,6 @@ function buildCmpResult() {
               const val      = getV(e, dim.key);
               const isBest   = val === best[dim.key]  && best[dim.key] !== worst[dim.key];
               const isWorst  = val === worst[dim.key] && best[dim.key] !== worst[dim.key];
-              // delta vs best
               const delta    = val - best[dim.key];
               const dHtml    = delta === 0
                 ? `<span class="cmp-delta pos">BEST</span>`
@@ -1986,7 +2553,6 @@ function buildCmpResult() {
             }).join('')}
           </div>`).join('')}
 
-        <!-- INFO ROWS -->
         <div class="cmp-row cmp-info-row">
           <div class="cmp-cell cmp-dim-cell">🏢 Type</div>
           ${entries.map(e => `<div class="cmp-cell cmp-info-cell">${e.bizType || '—'}</div>`).join('')}
@@ -2013,16 +2579,13 @@ function buildCmpResult() {
       </div>
     </div>
 
-    <!-- RADAR OVERLAY -->
     <div class="cmp-radar-wrap">
       <div class="cmp-radar-title">📡 RADAR OVERLAY</div>
       <div style="position:relative;height:260px"><canvas id="ch-cmp-radar"></canvas></div>
     </div>
 
-    <!-- WINNER SUMMARY -->
     ${buildWinnerSummary(entries, dims, best, getV)}`;
 
-  // Draw radar
   setTimeout(() => {
     if (typeof Chart === 'undefined') return;
     if (cmpChart) { try { cmpChart.destroy(); } catch(_) {} cmpChart = null; }
@@ -2078,6 +2641,7 @@ function buildWinnerSummary(entries, dims, best, getV) {
     </div>`;
 }
 
+/* @author Yasir Shaikh | https://github.com/YasirShaikh03 */
 function hexAlpha(hex, alpha) {
   const r = parseInt(hex.slice(1,3),16), g2 = parseInt(hex.slice(3,5),16), b2 = parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g2},${b2},${alpha})`;
