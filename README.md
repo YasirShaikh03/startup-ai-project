@@ -273,6 +273,13 @@ Fast, responsive, and user-friendly design for seamless experience.
 
 ---
 
+
+## Author
+
+Yasir Shaikh
+GitHub: https://github.com/YasirShaikh03
+
+
 ## 🌐 Project Access
 
 🔗 **GitHub Repository:**
